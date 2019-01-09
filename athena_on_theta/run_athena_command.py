@@ -31,7 +31,7 @@ def main():
    oparser.add_argument('--run-script-fn',dest='run_script_filename',default='runscript.sh',help='This is the name of the bash script that will run the athena application inside the container.')
 
    oparser.add_argument('-B','--bind-mount',dest='bind_mounts',help='The paths past to this argument will be passed to the Singularity command line for mounting local folders. This command can be repeated in a similar way.',action='append',nargs='*')
-   oparser.add_argument('-c','--container',dest='contianer',help='Full path to the singularity container to run inside.',required=True)
+   oparser.add_argument('-c','--container',dest='container',help='Full path to the singularity container to run inside.',required=True)
 
    oparser.add_argument('--ssd',dest='use_ssd',help='Run Athena container on SSD. If used, need to specify a list of files to copy back to working directory.',action='store_true',default=False)
    oparser.add_argument('--ssd-in',dest='ssd_in',help='This can be a comma separated list of globs to grab files in the current directory and copy to the SSD if running in the SSD. The list should be in double quotations or bash will evaluate the globs before runtime.',default='')
@@ -40,11 +40,15 @@ def main():
 
    args, unknown_args = oparser.parse_known_args()
 
+   logger.debug('args = %s',args)
+   logger.debug('unknown_args = %s',unknown_args)
+
    if args.command not in KNOWN_COMMANDS.keys():
       raise Exception('"--command" option must be one of the following %s, but %s was passed' % (KNOWN_COMMANDS.keys(),args.command))
 
    athena_args = parse_unknowns(unknown_args)
-
+   logger.debug('athena_args = %s',athena_args)
+   logger.info('cwd:                   %s',os.getcwd())
    logger.info('command:               %s',args.command)
    logger.info('use_ssd:               %s',args.use_ssd)
    logger.info('use_athenamp:          %s',args.use_athenamp)
@@ -107,21 +111,24 @@ def main():
    with open(args.run_script_filename,'w') as f:
       f.write(run_script)
 
+   os.chmod(args.run_script_filename,0775)
+
 
    # construct singularity command
    singularity_cmd = 'singularity exec'
    for x in args.bind_mounts:
-      for y in args.bind_mounts:
+      for y in x:
          singularity_cmd += ' -B ' + y
 
    singularity_cmd += ' ' + args.container
 
-   singularity_cmd += ' ' + args.run_script_filename
+   singularity_cmd += ' bash ' + os.getcwd() + '/' + args.run_script_filename
 
+   logger.info('running command: %s',singularity_cmd)
    if args.use_ssd:
-      p = subprocess.Popen(singularity_cmd,cwd=ssd_path)
+      p = subprocess.Popen(singularity_cmd.split(),cwd=ssd_path)
    else:
-      p = subprocess.Popen(singularity_cmd)
+      p = subprocess.Popen(singularity_cmd.split())
 
 
    stdout,stderr = p.communicate()
@@ -146,10 +153,17 @@ def parse_unknowns(args):
    while i < len(args):
       option = args[i]
       if option.startswith('--'):
+         # catch version of options that are '--option=value'
+         if i + 1 < len(args) and args[i+1].startswith('--') and '=' in option:
+            eqid = option.find('=')
+            option_only = option[:eqid]
+            value = option[eqid+1:]
+            output_args[option_only] = '"' + value + '"'
+            i += 1
          # make sure we don't go past length of list
-         if i + 1 < len(args):
+         elif i + 1 < len(args):
             value = args[i + 1]
-            output_args[option] = value
+            output_args[option] = '"' + value + '"'
             i += 2
          else:
             logging.error('no value to go with option: %s',option)
