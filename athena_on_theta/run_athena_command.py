@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import argparse,logging,subprocess,os
+import argparse,logging,subprocess,os,shutil,glob
 logger = logging.getLogger(__name__)
 
 
@@ -14,7 +14,7 @@ def main():
    logger.info('Start run_transform: %s',__file__)
 
    # parse command line
-   oparser = argparse.ArgumentParser()
+   oparser = argparse.ArgumentParser(description="Run athena transforms or plain old athena inside a container. In order to pass arguments to athena or the standard transform settings, just append the settings at the end of this command line and they will be passed to athena.")
 
    KNOWN_COMMANDS = {'rec':'Reco_tf.py','sim':'Sim_tf.py','gen':'Generate_tf.py','athena':'athena'}
    oparser.add_argument('--command', dest='command', help='Select which command to run: %s' % ','.join(str(x) for x in KNOWN_COMMANDS.keys()),required=True)
@@ -33,10 +33,6 @@ def main():
    oparser.add_argument('-B','--bind-mount',dest='bind_mounts',help='The paths past to this argument will be passed to the Singularity command line for mounting local folders. This command can be repeated in a similar way.',action='append',nargs='*')
    oparser.add_argument('-c','--container',dest='container',help='Full path to the singularity container to run inside.',required=True)
 
-   oparser.add_argument('--ssd',dest='use_ssd',help='Run Athena container on SSD. If used, need to specify a list of files to copy back to working directory.',action='store_true',default=False)
-   oparser.add_argument('--ssd-in',dest='ssd_in',help='This can be a comma separated list of globs to grab files in the current directory and copy to the SSD if running in the SSD. The list should be in double quotations or bash will evaluate the globs before runtime.',default='')
-   oparser.add_argument('--ssd-out',dest='ssd_out',help='This can be a comma separated list of globs to grab files in the SSD directory and copy back to the working after athena exits. The list should be in double quotations or bash will evaluate the globs before runtime.',default='')
-
 
    args, unknown_args = oparser.parse_known_args()
 
@@ -50,7 +46,6 @@ def main():
    logger.debug('athena_args = %s',athena_args)
    logger.info('cwd:                   %s',os.getcwd())
    logger.info('command:               %s',args.command)
-   logger.info('use_ssd:               %s',args.use_ssd)
    logger.info('use_athenamp:          %s',args.use_athenamp)
    logger.info('athena_release:        %s',args.athena_release)
    logger.info('athena_package:        %s',args.athena_package)
@@ -61,22 +56,6 @@ def main():
    logger.info('run_script_filename:   %s',args.run_script_filename)
    logger.info('bind_mounts:           %s',args.bind_mounts)
    logger.info('container:             %s',args.container)
-   logger.info('ssd_in:                %s',args.ssd_in)
-   logger.info('ssd_out:               %s',args.ssd_out)
-
-
-   ssd_path = ''
-   if args.use_ssd:
-      # mkdir custom directory on SSD
-      ssd_path = '/local/scratch'
-      if 'BALSAM_JOB_ID' in os.environ:
-         ssd_path += '/' + os.environ['BALSAM_JOB_ID']
-      if not os.path.exists(ssd_path):
-         os.makedirs(ssd_path)
-
-      # copy input files to SSD
-      # ...
-
 
 
    use_athenamp = False
@@ -91,12 +70,11 @@ def main():
    if len(args.package_setup_script) > 0:
       use_package_setup_script = True
 
+
    run_script = athena_template.format(
       use_athenamp = use_athenamp,
       use_workarea = use_workarea,
       use_package_setup_script = use_package_setup_script,
-      use_ssd = args.use_ssd,
-      ssd_path = ssd_path,
       athena_release = args.athena_release,
       athena_package = args.athena_package,
       athena_cmtconfig = args.athena_cmtconfig,
@@ -125,23 +103,10 @@ def main():
    singularity_cmd += ' bash ' + os.getcwd() + '/' + args.run_script_filename
 
    logger.info('running command: %s',singularity_cmd)
-   if args.use_ssd:
-      p = subprocess.Popen(singularity_cmd.split(),cwd=ssd_path)
-   else:
-      p = subprocess.Popen(singularity_cmd.split())
+   p = subprocess.Popen(singularity_cmd.split())
 
 
    stdout,stderr = p.communicate()
-
-   # copy out from SSD
-   if args.use_ssd:
-      pass
-
-
-
-
-
-   
 
 
 
@@ -182,24 +147,18 @@ echo [$SECONDS] DATE=$(date)
 USE_MP={use_athenamp}
 USE_WORKAREA={use_workarea}
 USE_PKG_SCRIPT={use_package_setup_script}
-USE_SSD={use_ssd}
 RELEASE={athena_release}
 PACKAGE={athena_package}
 CMTCONFIG={athena_cmtconfig}
+STARTDIR=$PWD
+echo [$SECONDS] STARTDIR=        $STARTDIR
 echo [$SECONDS] USE_MP=          $USE_MP
 echo [$SECONDS] USE_WORKAREA=    $USE_WORKAREA
 echo [$SECONDS] USE_PKG_SCRIPT=  $USE_PKG_SCRIPT
-echo [$SECONDS] USE_SSD=         $USE_SSD
 echo [$SECONDS] RELEASE=         $RELEASE
 echo [$SECONDS] PACKAGE=         $PACKAGE
 echo [$SECONDS] CMTCONFIG=       $CMTCONFIG
 
-if [ "$USE_SSD" = "TRUE" ] || [ "$USE_SSD" = "true" ] || [ "$USE_SSD" = "True" ]; then
-   SSD_PATH={ssd_path}
-   echo [$SECONDS] SSD_PATH=        $SSD_PATH
-   mkdir -s $SSD_PATH
-   cd $SSD_PATH
-fi
 
 echo [$SECONDS] Setting up Atlas Local Root Base
 export ATLAS_LOCAL_ROOT_BASE=/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase
@@ -274,6 +233,7 @@ echo [$SECONDS] Starting command
 {command} {command_args}
 EXIT_CODE=$?
 echo [$SECONDS] command exited with return code: $EXIT_CODE
+
 echo [$SECONDS] Exiting
 exit $EXIT_CODE
 '''
