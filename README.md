@@ -56,5 +56,10 @@ The command has these options:
                            Full path to the singularity container to run inside.
 ```
 
+## Tutorials
+
+## sim_on_theta/submit.sh
+This script gives you an idea of how to run simulation on Theta. It should run out of the box. 
+Just login to theta `ssh theta.alcf.anl.gov` make sure you can access `/projects/atlas_aesp` then clone this repo and run `qsub submit.sh`. The job will run on the debug queue and won't finish in the 60 minute limit since there are too many input events for one node.
 
 
