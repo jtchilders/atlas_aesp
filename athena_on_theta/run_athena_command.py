@@ -30,7 +30,7 @@ def main():
    oparser.add_argument('--gcclocation',dest='gcclocation',default='',help='Sometimes "asetup" needs help finding the gcc libs so set this if you find problems. Example: "--gcclocation=/cvmfs/atlas.cern.ch/path/to/gcc/for/your/release"')
    oparser.add_argument('--run-script-fn',dest='run_script_filename',default='runscript.sh',help='This is the name of the bash script that will run the athena application inside the container.')
 
-   oparser.add_argument('-B','--bind-mount',dest='bind_mounts',help='The paths past to this argument will be passed to the Singularity command line for mounting local folders. This command can be repeated in a similar way.',action='append',nargs='*')
+   oparser.add_argument('-B','--bind-mount',dest='bind_mounts',help='The paths past to this argument will be passed to the Singularity command line for mounting local folders. This command can be repeated in a similar way.',action='append',nargs='*',default=[])
    oparser.add_argument('-c','--container',dest='container',help='Full path to the singularity container to run inside.',required=True)
 
 
@@ -83,7 +83,7 @@ def main():
       package_setup_script = args.package_setup_script,
       athena_proc_number = args.use_athenamp,
       command = KNOWN_COMMANDS[args.command],
-      command_args = ' '.join("%s %s" % (key,athena_args[key]) for key in athena_args.keys())
+      command_args = ' '.join("%s=%s" % (key,athena_args[key]) for key in athena_args.keys())
       )
 
    with open(args.run_script_filename,'w') as f:
@@ -100,7 +100,7 @@ def main():
 
    singularity_cmd += ' ' + args.container
 
-   singularity_cmd += ' bash ' + os.getcwd() + '/' + args.run_script_filename
+   singularity_cmd += ' /bin/bash ' + os.getcwd() + '/' + args.run_script_filename
 
    logger.info('running command: %s',singularity_cmd)
    p = subprocess.Popen(singularity_cmd.split())
@@ -112,23 +112,25 @@ def main():
 
 def parse_unknowns(args):
    # allow users to pass arguments for Athena or transforms directly on command line
-   # they should all be in the form "--option value"
+   # they can all be in the form "--option value" or "--option=value"
    output_args = {}
    i = 0
    while i < len(args):
       option = args[i]
       if option.startswith('--'):
          # catch version of options that are '--option=value'
-         if i + 1 < len(args) and args[i+1].startswith('--') and '=' in option:
+         if args[i].startswith('--') and '=' in option:
             eqid = option.find('=')
             option_only = option[:eqid]
             value = option[eqid+1:]
+            logger.info('> %s = %s ',option_only,value)
             output_args[option_only] = '"' + value + '"'
             i += 1
          # make sure we don't go past length of list
-         elif i + 1 < len(args):
+         elif args[i].startswith('--') and i + 1 < len(args) and not args[i+1].startswith('--'):
             value = args[i + 1]
             output_args[option] = '"' + value + '"'
+            logger.info('> %s = %s ',option,value)
             i += 2
          else:
             logging.error('no value to go with option: %s',option)
