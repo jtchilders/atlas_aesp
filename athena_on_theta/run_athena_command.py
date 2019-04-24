@@ -32,7 +32,8 @@ def main():
 
    oparser.add_argument('-B','--bind-mount',dest='bind_mounts',help='The paths past to this argument will be passed to the Singularity command line for mounting local folders. This command can be repeated in a similar way.',action='append',nargs='*',default=[])
    oparser.add_argument('-c','--container',dest='container',help='Full path to the singularity container to run inside.',required=True)
-
+   
+   oparser.add_argument('--frontier',dest='frontier_server',help='URL to the frontier server',default='http://10.236.1.194:3128')
 
    args, unknown_args = oparser.parse_known_args()
 
@@ -56,6 +57,7 @@ def main():
    logger.info('run_script_filename:   %s',args.run_script_filename)
    logger.info('bind_mounts:           %s',args.bind_mounts)
    logger.info('container:             %s',args.container)
+   logger.info('frontier:              %s',args.frontier_server)
 
 
    use_athenamp = False
@@ -83,7 +85,8 @@ def main():
       package_setup_script = args.package_setup_script,
       athena_proc_number = args.use_athenamp,
       command = KNOWN_COMMANDS[args.command],
-      command_args = ' '.join("%s=%s" % (key,athena_args[key]) for key in athena_args.keys())
+      command_args = ' '.join("%s=%s" % (key,athena_args[key]) for key in athena_args.keys()),
+      frontier_server = args.frontier_server
       )
 
    with open(args.run_script_filename,'w') as f:
@@ -107,6 +110,10 @@ def main():
 
 
    stdout,stderr = p.communicate()
+   
+   logger.info('command exited with return code: %s',p.returncode)
+   if p.returncode != 0:
+      sys.exit(p.returncode)
 
 
 
@@ -208,8 +215,8 @@ else
    export DATAPATH=$PWD:$DATAPATH
 
    echo [$SECONDS] Setting up Frontier
-   export http_proxy=http://10.236.1.194:3128
-   export HTTP_PROXY=http://10.236.1.194:3128
+   export http_proxy={frontier_server}
+   export HTTP_PROXY=$http_proxy
    export FRONTIER_SERVER=$FRONTIER_SERVER\(proxyurl=$HTTP_PROXY\)
    export FRONTIER_LOG_LEVEL=info
 fi
