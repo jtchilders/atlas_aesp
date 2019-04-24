@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import argparse,logging,subprocess,os,shutil,glob
+import argparse,logging,subprocess,os,shutil,glob,sys
 logger = logging.getLogger(__name__)
 
 
@@ -92,7 +92,7 @@ def main():
    with open(args.run_script_filename,'w') as f:
       f.write(run_script)
 
-   os.chmod(args.run_script_filename,0775)
+   os.chmod(args.run_script_filename,0o775)
 
 
    # construct singularity command
@@ -115,6 +115,10 @@ def main():
    if p.returncode != 0:
       sys.exit(p.returncode)
 
+   logger.info('done, return code: %s',p.returncode)
+
+   sys.exit(p.returncode)
+
 
 
 def parse_unknowns(args):
@@ -136,7 +140,7 @@ def parse_unknowns(args):
          # make sure we don't go past length of list
          elif args[i].startswith('--') and i + 1 < len(args) and not args[i+1].startswith('--'):
             value = args[i + 1]
-            output_args[option] = '"' + value + '"'
+            output_args[option] = '"' + value.replace('"','\"') + '"'
             logger.info('> %s = %s ',option,value)
             i += 2
          else:
